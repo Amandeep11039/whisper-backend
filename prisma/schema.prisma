@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(cuid())
+  username    String   @unique
+  pinHash     String
+  displayName String
+  avatarUrl   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sentMessages     Message[]          @relation("SentMessages")
+  givenNicknames   Nickname[]         @relation("GivenNicknames")
+  receivedNicknames Nickname[]       @relation("ReceivedNickname")
+  preferences      UserPreference?
+
+  @@index([username])
+}
+
+model Nickname {
+  id         String @id @default(cuid())
+  giverId    String
+  receiverId String
+  nickname   String
+
+  giver    User @relation("GivenNicknames", fields: [giverId],    references: [id])
+  receiver User @relation("ReceivedNickname", fields: [receiverId], references: [id])
+
+  @@unique([giverId, receiverId])
+}
+
+model Message {
+  id        String      @id @default(cuid())
+  senderId  String
+  content   String?
+  type      String      // TEXT | IMAGE | VOICE
+  mediaUrl  String?
+  isEdited  Boolean     @default(false)
+  editedAt  DateTime?
+  isDeleted Boolean     @default(false)
+  deletedAt DateTime?
+  seenAt    DateTime?
+  createdAt DateTime    @default(now())
+
+  sender User @relation("SentMessages", fields: [senderId], references: [id])
+
+  @@index([createdAt])
+  @@index([senderId])
+}
+
+model UserPreference {
+  userId           String  @id
+  theme            String  @default("SYSTEM") // LIGHT | DARK | SYSTEM
+  showOnlineStatus Boolean @default(true)
+  showLastSeen     Boolean @default(true)
+
+  user User @relation(fields: [userId], references: [id])
+}
