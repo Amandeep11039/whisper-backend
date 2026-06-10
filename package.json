@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsup src/server.ts --format esm --clean",
-    "start": "node dist/server.js",
+    "start": "npx prisma db push && tsx prisma/seed.ts && node dist/server.js",
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
