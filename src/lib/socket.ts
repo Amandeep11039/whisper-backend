@@ -36,12 +36,16 @@ export function initSocket(server: http.Server): Server {
     // Join a personal room so we can emit to specific users
     socket.join(socket.data.userId);
 
+    // Broadcast online status to everyone else
+    socket.broadcast.emit('user:online', { userId: socket.data.userId });
+
     socket.on('user:typing', (payload: { isTyping: boolean }) => {
       socket.broadcast.emit('user:typing', payload);
     });
 
     socket.on('disconnect', () => {
       console.log('User disconnected:', socket.id);
+      socket.broadcast.emit('user:offline', { userId: socket.data.userId });
     });
   });
 
