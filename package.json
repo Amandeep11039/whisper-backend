@@ -16,8 +16,6 @@
     "cookie-parser": "^1",
     "cors": "^2",
     "express": "^4.18",
-    "express-rate-limit": "^7",
-    "helmet": "^7",
     "jsonwebtoken": "^9",
     "morgan": "^1",
     "multer": "^1",
