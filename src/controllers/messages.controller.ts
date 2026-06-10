@@ -101,15 +101,23 @@ export const markSeen = asyncHandler(async (req: Request, res: Response): Promis
 
   const now = new Date();
   
-  await prisma.message.updateMany({
-    where: {
-      senderId: { not: userId },
-      seenAt: null
-    },
-    data: {
-      seenAt: now
+  try {
+    await prisma.message.updateMany({
+      where: {
+        senderId: { not: userId },
+        seenAt: null
+      },
+      data: {
+        seenAt: now
+      }
+    });
+  } catch (err: any) {
+    if (err.code === 'P2020' || err.message?.includes('database is locked')) {
+      console.warn('[messages.controller] Ignored SQLite lock on markSeen');
+    } else {
+      throw err;
     }
-  });
+  }
 
   getIO().emit('messages:seen', { seenAt: now.toISOString() });
 
