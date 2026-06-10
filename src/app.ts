@@ -9,6 +9,9 @@ import rateLimit from 'express-rate-limit';
 
 const app = express();
 
+// Trust the first proxy (Render's load balancer) so rate limiting works correctly
+app.set('trust proxy', 1);
+
 const ALLOWED_ORIGINS = (process.env['CLIENT_ORIGIN'] || 'http://localhost:5173').split(',');
 
 app.use(helmet());
