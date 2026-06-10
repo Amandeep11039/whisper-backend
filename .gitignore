@@ -1,33 +1,32 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Dependencies
+node_modules/
 
-node_modules
-dist
-dist-ssr
-*.local
+# Build output
+dist/
 
 # Environment variables
 .env
 .env.*
 !.env.example
 
-# SQLite
+# SQLite database
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# Prisma generated client (regenerated on build)
+# Keep schema.prisma but ignore generated client if outside node_modules
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
