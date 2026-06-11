@@ -53,7 +53,7 @@ export function initSocket(server: http.Server): Server {
     socket.join(userId);
 
     // 3. Tell this new socket whether the partner is currently online
-    socket.emit('presence:init', { partnerOnline: false, partnerLastSeen: null }); // overwritten below
+    // socket.emit('presence:init', { partnerOnline: false, partnerLastSeen: null }); // overwritten below
     try {
       // Find the partner (the other user in the DB)
       const partner = await prisma.user.findFirst({
@@ -62,10 +62,14 @@ export function initSocket(server: http.Server): Server {
       });
 
       if (partner) {
-        const partnerOnline = onlineUsers.has(partner.id) && (onlineUsers.get(partner.id)?.size ?? 0) > 0;
+        const partnerOnline =
+          onlineUsers.has(partner.id) && (onlineUsers.get(partner.id)?.size ?? 0) > 0;
+
         socket.emit('presence:init', {
           partnerOnline,
-          partnerLastSeen: partner.lastSeenAt?.toISOString() ?? null,
+          partnerLastSeen: partnerOnline
+            ? null                                      // ✅ online → no last seen
+            : partner.lastSeenAt?.toISOString() ?? null // ✅ offline → show last seen
         });
       }
     } catch (err) {
