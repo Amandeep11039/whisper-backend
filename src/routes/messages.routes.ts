@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth.middleware.js';
-import { validate } from '../middleware/validate.middleware.js';
+import { requireAuth } from '../middlewares/auth.middleware.js';
+import { validate } from '../middlewares/validate.middleware.js';
 import * as ctrl from '../controllers/messages.controller.js';
-import { SendMessageSchema, EditMessageSchema, PaginationSchema } from '../shared/schemas/message.schema.js';
+import { SendMessageSchema, EditMessageSchema, PaginationSchema } from '../validators/message.schema.js';
 
 const router = Router();
 

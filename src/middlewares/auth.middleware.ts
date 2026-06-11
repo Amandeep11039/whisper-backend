@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { prisma } from '../lib/prisma.js';
+import { prisma } from '../config/prisma.js';
 
 export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   const userId = req.header('x-user-id');
@@ -7,13 +7,13 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   if (!userId) {
     res.status(401).json({ error: 'Unauthorized' });
     return;
-  }
+  }     
 
-  try {
+  try {   
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       res.status(401).json({ error: 'Unauthorized' });
-      return;
+      return; 
     }
 
     req.user = { id: user.id };

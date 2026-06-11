@@ -1,7 +1,7 @@
 import http from 'http';
 import app from './app.js';
-import { initSocket } from './lib/socket.js';
-import { prisma } from './lib/prisma.js';
+import { initSocket } from './config/socket.js';
+import { prisma } from './config/prisma.js';
 
 const PORT = process.env['PORT'] || 3001;
 

@@ -8,7 +8,7 @@ let io: Server;
 const onlineUsers = new Map<string, Set<string>>();
 
 const PING_INTERVAL_MS = 20_000;
-const PONG_TIMEOUT_MS  = 5_000;
+const PONG_TIMEOUT_MS = 5_000;
 
 export function initSocket(server: http.Server): Server {
   io = new Server(server, {
@@ -79,6 +79,7 @@ export function initSocket(server: http.Server): Server {
 
     // ── Application events ───────────────────────────────────────────────────
     socket.on('user:typing', (payload: { isTyping: boolean }) => {
+      console.log(payload)
       socket.broadcast.emit('user:typing', payload);
     });
 
