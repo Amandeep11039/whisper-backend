@@ -14,7 +14,8 @@ server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 }); 
 
-// Graceful shutdown
+// Graceful shutdown. 
+//sdfsdfasdf
 process.on('SIGTERM', async () => {
   await prisma.$disconnect();
   server.close();
