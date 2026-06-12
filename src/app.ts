@@ -4,6 +4,7 @@ import morgan from 'morgan';
 
 import authRoutes from './routes/auth.routes.js';
 import messagesRoutes from './routes/messages.routes.js';
+import userRoutes from './routes/user.routes.js';
 
 const app = express();
 
@@ -14,7 +15,7 @@ app.use(cors({
     /^http:\/\/192\.168\.\d+\.\d+:5173$/, // Allow local network IPs
   ],
   credentials: true,
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
     'Content-Type',
     'Authorization',
@@ -34,6 +35,7 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/messages', messagesRoutes);
+app.use('/api/users', userRoutes);
 
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error(err);
