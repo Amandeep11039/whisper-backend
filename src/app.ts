@@ -8,11 +8,22 @@ import messagesRoutes from './routes/messages.routes.js';
 const app = express();
 
 app.use(cors({
-  origin: '*', // Allow all origins
+  origin: [
+    'http://localhost:5173',
+    'https://whisper-frontend-nine.vercel.app',
+    /^http:\/\/192\.168\.\d+\.\d+:5173$/, // Allow local network IPs
+  ],
   credentials: true,
-  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
-  allowedHeaders: ['Content-Type', 'X-User-Id'],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'x-user-id',
+    'x-socket-id'
+  ],
 }));
+
+app.options('*', cors());
 app.use(express.json());
 app.use(morgan('dev'));
 
