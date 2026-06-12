@@ -13,18 +13,36 @@ export const fetchMessages = async (limit: number, cursor?: string) => {
   };
 };
 
-export const sendMessage = async (senderId: string, content: string | undefined, type: 'TEXT' | 'IMAGE' | 'VOICE', mediaUrl?: string) => {
+export const sendMessage = async (
+  senderId: string,
+  content: string | undefined,
+  type: 'TEXT' | 'IMAGE' | 'VOICE',
+  mediaUrl?: string,
+  originSocketId?: string
+) => {
   const message = await repo.createMessage({ 
     senderId, 
     content: content ?? null, 
     type, 
     mediaUrl: mediaUrl ?? null 
   });
-  getIO().emit('message:new', message);
+
+  const io = getIO();
+  if (originSocketId) {
+    io.except(originSocketId).emit('message:new', message);
+  } else {
+    io.emit('message:new', message);
+  }
+
   return message;
 };
 
-export const editMessage = async (id: string, userId: string, content: string) => {
+export const editMessage = async (
+  id: string,
+  userId: string,
+  content: string,
+  originSocketId?: string
+) => {
   const existing = await repo.getMessageById(id);
 
   if (!existing || existing.senderId !== userId) {
@@ -36,11 +54,20 @@ export const editMessage = async (id: string, userId: string, content: string) =
   }
 
   const updated = await repo.updateMessage(id, { content, isEdited: true, editedAt: new Date() });
-  getIO().emit('message:edited', { id: updated.id, content: updated.content, editedAt: updated.editedAt });
+  const payload = { id: updated.id, content: updated.content, editedAt: updated.editedAt };
+  if (originSocketId) {
+    getIO().except(originSocketId).emit('message:edited', payload);
+  } else {
+    getIO().emit('message:edited', payload);
+  }
   return updated;
 };
 
-export const deleteMessage = async (id: string, userId: string) => {
+export const deleteMessage = async (
+  id: string,
+  userId: string,
+  originSocketId?: string
+) => {
   const existing = await repo.getMessageById(id);
 
   if (!existing || existing.senderId !== userId) {
@@ -48,11 +75,16 @@ export const deleteMessage = async (id: string, userId: string) => {
   }
 
   const deleted = await repo.updateMessage(id, { isDeleted: true, deletedAt: new Date() });
-  getIO().emit('message:deleted', { id: deleted.id, deletedAt: deleted.deletedAt });
+  const payload = { id: deleted.id, deletedAt: deleted.deletedAt };
+  if (originSocketId) {
+    getIO().except(originSocketId).emit('message:deleted', payload);
+  } else {
+    getIO().emit('message:deleted', payload);
+  }
   return true;
 };
 
-export const markSeen = async (userId: string) => {
+export const markSeen = async (userId: string, originSocketId?: string) => {
   const now = new Date();
   try {
     await repo.markMessagesAsSeen(userId, now);
@@ -63,6 +95,11 @@ export const markSeen = async (userId: string) => {
       throw err;
     }
   }
-  getIO().emit('messages:seen', { seenAt: now.toISOString() });
+  const payload = { seenAt: now.toISOString() };
+  if (originSocketId) {
+    getIO().except(originSocketId).emit('messages:seen', payload);
+  } else {
+    getIO().emit('messages:seen', payload);
+  }
   return now.toISOString();
 };

@@ -20,8 +20,9 @@ export const sendMessage = asyncHandler(async (
 ): Promise<void> => {
   const senderId = req.user!.id;
   const { content, type, mediaUrl } = req.body;
+  const originSocketId = req.headers['x-socket-id'] as string | undefined;
 
-  const message = await msgService.sendMessage(senderId, content, type, mediaUrl);
+  const message = await msgService.sendMessage(senderId, content, type, mediaUrl, originSocketId);
   res.status(201).json(message);
 });
 
@@ -31,9 +32,10 @@ export const editMessage = asyncHandler(async (
 ): Promise<void> => {
   const { id } = req.params;
   const userId = req.user!.id;
+  const originSocketId = req.headers['x-socket-id'] as string | undefined;
 
   try {
-    const updated = await msgService.editMessage(id, userId, req.body.content);
+    const updated = await msgService.editMessage(id, userId, req.body.content, originSocketId);
     res.json(updated);
   } catch (error: any) {
     if (error instanceof AppError) {
@@ -50,9 +52,10 @@ export const deleteMessage = asyncHandler(async (
 ): Promise<void> => {
   const { id } = req.params;
   const userId = req.user!.id;
+  const originSocketId = req.headers['x-socket-id'] as string | undefined;
 
   try {
-    await msgService.deleteMessage(id, userId);
+    await msgService.deleteMessage(id, userId, originSocketId);
     res.json({ success: true });
   } catch (error: any) {
     if (error instanceof AppError) {
@@ -65,6 +68,7 @@ export const deleteMessage = asyncHandler(async (
 
 export const markSeen = asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const userId = req.user!.id;
-  const seenAt = await msgService.markSeen(userId);
+  const originSocketId = req.headers['x-socket-id'] as string | undefined;
+  const seenAt = await msgService.markSeen(userId, originSocketId);
   res.json({ success: true, seenAt });
 });

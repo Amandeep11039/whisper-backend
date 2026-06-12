@@ -87,6 +87,20 @@ export function initSocket(server: http.Server): Server {
       socket.broadcast.emit('user:typing', payload);
     });
 
+    socket.on('user:backgrounded', async () => {
+      // Mobile tab went to background — update lastSeenAt softly
+      // but keep the socket alive so reconnect is instant when they return
+      try {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { lastSeenAt: new Date() },
+        });
+      } catch (err) {
+        console.error('[socket] user:backgrounded lastSeenAt update failed:', err);
+      }
+      // Don't emit user:offline — they're still connected
+    });
+
     // Client must respond to our app-level ping to detect silent disconnects
     socket.on('pong:app', () => {
       // Reset the pong timer when we hear back
