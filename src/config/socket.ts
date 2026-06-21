@@ -83,7 +83,6 @@ export function initSocket(server: http.Server): Server {
 
     // ── Application events ───────────────────────────────────────────────────
     socket.on('user:typing', (payload: { isTyping: boolean }) => {
-      console.log(payload)
       socket.broadcast.emit('user:typing', payload);
     });
 
@@ -99,6 +98,41 @@ export function initSocket(server: http.Server): Server {
         console.error('[socket] user:backgrounded lastSeenAt update failed:', err);
       }
       // Don't emit user:offline — they're still connected
+    });
+
+    // ── WebRTC Calling Events ────────────────────────────────────────────────
+    socket.on('call:initiate', (payload: { partnerId: string, offer: any, isVideo: boolean }) => {
+      console.log(`[socket] call:initiate from ${userId} to ${payload.partnerId}`);
+      // Notify the specific partner's room
+      socket.to(payload.partnerId).emit('call:incoming', {
+        callerId: userId,
+        offer: payload.offer,
+        isVideo: payload.isVideo
+      });
+    });
+
+    socket.on('call:accept', (payload: { partnerId: string, answer: any }) => {
+      console.log(`[socket] call:accept from ${userId} to ${payload.partnerId}`);
+      socket.to(payload.partnerId).emit('call:accepted', {
+        answer: payload.answer
+      });
+    });
+
+    socket.on('call:reject', (payload: { partnerId: string }) => {
+      console.log(`[socket] call:reject from ${userId} to ${payload.partnerId}`);
+      socket.to(payload.partnerId).emit('call:rejected');
+    });
+
+    socket.on('call:signal', (payload: { partnerId: string, candidate: any }) => {
+      // ICE candidates
+      socket.to(payload.partnerId).emit('call:signal', {
+        candidate: payload.candidate
+      });
+    });
+
+    socket.on('call:end', (payload: { partnerId: string }) => {
+      console.log(`[socket] call:end from ${userId} to ${payload.partnerId}`);
+      socket.to(payload.partnerId).emit('call:ended');
     });
 
     // Client must respond to our app-level ping to detect silent disconnects
