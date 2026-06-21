@@ -9,6 +9,12 @@ const onlineUsers = new Map<string, Set<string>>();
 // Tracks userId -> Set of hidden socketIds
 const hiddenSockets = new Map<string, Set<string>>();
 
+function isUserOnline(userId: string): boolean {
+  const all = onlineUsers.get(userId)?.size || 0;
+  const hidden = hiddenSockets.get(userId)?.size || 0;
+  return all > hidden;
+}
+
 const PING_INTERVAL_MS = 20_000;
 const PONG_TIMEOUT_MS = 5_000;
 
@@ -41,21 +47,29 @@ export function initSocket(server: http.Server): Server {
   // ── Connection handler ───────────────────────────────────────────────────────
   io.on('connection', async (socket) => {
     const userId: string = socket.data.userId;
-    console.log(`[socket] connected userId=${userId} socketId=${socket.id}`);
+    const isHidden = socket.handshake.auth.isHidden === true;
+    console.log(`[socket] connected userId=${userId} socketId=${socket.id} isHidden=${isHidden}`);
+
+    const wasOnline = isUserOnline(userId);
 
     // 1. Add to presence map
     if (!onlineUsers.has(userId)) {
       onlineUsers.set(userId, new Set());
     }
-    const userSockets = onlineUsers.get(userId)!;
-    const wasOffline = userSockets.size === 0;
-    userSockets.add(socket.id);
+    onlineUsers.get(userId)!.add(socket.id);
+
+    // Add to hidden map if hidden
+    if (isHidden) {
+      if (!hiddenSockets.has(userId)) {
+        hiddenSockets.set(userId, new Set());
+      }
+      hiddenSockets.get(userId)!.add(socket.id);
+    }
 
     // 2. Join personal room
     socket.join(userId);
 
     // 3. Tell this new socket whether the partner is currently online
-    // socket.emit('presence:init', { partnerOnline: false, partnerLastSeen: null }); // overwritten below
     try {
       // Find the partner (the other user in the DB)
       const partner = await prisma.user.findFirst({
@@ -64,22 +78,30 @@ export function initSocket(server: http.Server): Server {
       });
 
       if (partner) {
-        const partnerOnline =
-          onlineUsers.has(partner.id) && (onlineUsers.get(partner.id)?.size ?? 0) > 0;
+        const partnerOnline = isUserOnline(partner.id);
 
         socket.emit('presence:init', {
           partnerOnline,
           partnerLastSeen: partnerOnline
-            ? null                                      // ✅ online → no last seen
-            : partner.lastSeenAt?.toISOString() ?? null // ✅ offline → show last seen
+            ? null
+            : partner.lastSeenAt?.toISOString() ?? null
         });
       }
     } catch (err) {
       console.error('[socket] presence init error:', err);
     }
 
-    // 4. If this user was previously offline, tell the partner they're now online
-    if (wasOffline) {
+    // 4. If this user was previously offline and is now online, tell the partner
+    const isOnlineNow = isUserOnline(userId);
+    if (!wasOnline && isOnlineNow) {
+      try {
+        await prisma.user.update({
+          where: { id: userId },
+          data: { lastSeenAt: null },
+        });
+      } catch (err) {
+        console.error('[socket] failed to reset lastSeenAt on login connection:', err);
+      }
       socket.broadcast.emit('user:online', { userId });
     }
 
@@ -89,16 +111,17 @@ export function initSocket(server: http.Server): Server {
     });
 
     socket.on('user:tab-hidden', async () => {
+      const wasOnline = isUserOnline(userId);
+
       if (!hiddenSockets.has(userId)) {
         hiddenSockets.set(userId, new Set());
       }
       hiddenSockets.get(userId)!.add(socket.id);
 
-      const allSockets = onlineUsers.get(userId)?.size || 0;
-      const hidden = hiddenSockets.get(userId)?.size || 0;
+      const isOnlineNow = isUserOnline(userId);
 
       // If all tabs are hidden, mark user offline
-      if (allSockets > 0 && allSockets === hidden) {
+      if (wasOnline && !isOnlineNow) {
         const lastSeenAt = new Date();
         try {
           await prisma.user.update({
@@ -116,16 +139,20 @@ export function initSocket(server: http.Server): Server {
     });
 
     socket.on('user:tab-visible', async () => {
+      const wasOnline = isUserOnline(userId);
+
       const hidden = hiddenSockets.get(userId);
       if (hidden) {
         hidden.delete(socket.id);
+        if (hidden.size === 0) {
+          hiddenSockets.delete(userId);
+        }
       }
 
-      const allSockets = onlineUsers.get(userId)?.size || 0;
-      const hiddenCount = hidden?.size || 0;
+      const isOnlineNow = isUserOnline(userId);
 
       // If we went from fully hidden to at least one visible tab
-      if (allSockets > hiddenCount && allSockets - 1 === hiddenCount) {
+      if (!wasOnline && isOnlineNow) {
         try {
           await prisma.user.update({
             where: { id: userId },
@@ -194,10 +221,18 @@ export function initSocket(server: http.Server): Server {
       clearInterval(heartbeat);
       clearTimeout(socket.data.pongTimer as ReturnType<typeof setTimeout>);
 
-      // Remove from presence map
+      const wasOnline = isUserOnline(userId);
+
+      // Remove from maps
       const sockets = onlineUsers.get(userId);
+      if (sockets) {
+        sockets.delete(socket.id);
+        if (sockets.size === 0) {
+          onlineUsers.delete(userId);
+        }
+      }
+
       const hidden = hiddenSockets.get(userId);
-      
       if (hidden) {
         hidden.delete(socket.id);
         if (hidden.size === 0) {
@@ -205,28 +240,25 @@ export function initSocket(server: http.Server): Server {
         }
       }
 
-      if (sockets) {
-        sockets.delete(socket.id);
-        if (sockets.size === 0) {
-          onlineUsers.delete(userId);
+      const isOnlineNow = isUserOnline(userId);
 
-          // Update lastSeenAt in DB
-          const lastSeenAt = new Date();
-          try {
-            await prisma.user.update({
-              where: { id: userId },
-              data: { lastSeenAt },
-            });
-          } catch (err) {
-            console.error('[socket] failed to update lastSeenAt:', err);
-          }
-
-          // Notify partner
-          socket.broadcast.emit('user:offline', {
-            userId,
-            lastSeenAt: lastSeenAt.toISOString(),
+      // If the user transitioned from online to offline
+      if (wasOnline && !isOnlineNow) {
+        const lastSeenAt = new Date();
+        try {
+          await prisma.user.update({
+            where: { id: userId },
+            data: { lastSeenAt },
           });
+        } catch (err) {
+          console.error('[socket] failed to update lastSeenAt on disconnect:', err);
         }
+
+        // Notify partner
+        socket.broadcast.emit('user:offline', {
+          userId,
+          lastSeenAt: lastSeenAt.toISOString(),
+        });
       }
     });
   });
