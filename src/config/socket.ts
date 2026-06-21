@@ -6,6 +6,8 @@ let io: Server;
 
 // Tracks userId -> Set of socketIds (handles multiple tabs)
 const onlineUsers = new Map<string, Set<string>>();
+// Tracks userId -> Set of hidden socketIds
+const hiddenSockets = new Map<string, Set<string>>();
 
 const PING_INTERVAL_MS = 20_000;
 const PONG_TIMEOUT_MS = 5_000;
@@ -86,18 +88,54 @@ export function initSocket(server: http.Server): Server {
       socket.broadcast.emit('user:typing', payload);
     });
 
-    socket.on('user:backgrounded', async () => {
-      // Mobile tab went to background — update lastSeenAt softly
-      // but keep the socket alive so reconnect is instant when they return
-      try {
-        await prisma.user.update({
-          where: { id: userId },
-          data: { lastSeenAt: new Date() },
-        });
-      } catch (err) {
-        console.error('[socket] user:backgrounded lastSeenAt update failed:', err);
+    socket.on('user:tab-hidden', async () => {
+      if (!hiddenSockets.has(userId)) {
+        hiddenSockets.set(userId, new Set());
       }
-      // Don't emit user:offline — they're still connected
+      hiddenSockets.get(userId)!.add(socket.id);
+
+      const allSockets = onlineUsers.get(userId)?.size || 0;
+      const hidden = hiddenSockets.get(userId)?.size || 0;
+
+      // If all tabs are hidden, mark user offline
+      if (allSockets > 0 && allSockets === hidden) {
+        const lastSeenAt = new Date();
+        try {
+          await prisma.user.update({
+            where: { id: userId },
+            data: { lastSeenAt },
+          });
+        } catch (err) {
+          console.error('[socket] user:tab-hidden lastSeenAt update failed:', err);
+        }
+        socket.broadcast.emit('user:offline', {
+          userId,
+          lastSeenAt: lastSeenAt.toISOString(),
+        });
+      }
+    });
+
+    socket.on('user:tab-visible', async () => {
+      const hidden = hiddenSockets.get(userId);
+      if (hidden) {
+        hidden.delete(socket.id);
+      }
+
+      const allSockets = onlineUsers.get(userId)?.size || 0;
+      const hiddenCount = hidden?.size || 0;
+
+      // If we went from fully hidden to at least one visible tab
+      if (allSockets > hiddenCount && allSockets - 1 === hiddenCount) {
+        try {
+          await prisma.user.update({
+            where: { id: userId },
+            data: { lastSeenAt: null },
+          });
+        } catch (err) {
+          console.error('[socket] user:tab-visible lastSeenAt update failed:', err);
+        }
+        socket.broadcast.emit('user:online', { userId });
+      }
     });
 
     // ── WebRTC Calling Events ────────────────────────────────────────────────
@@ -158,6 +196,15 @@ export function initSocket(server: http.Server): Server {
 
       // Remove from presence map
       const sockets = onlineUsers.get(userId);
+      const hidden = hiddenSockets.get(userId);
+      
+      if (hidden) {
+        hidden.delete(socket.id);
+        if (hidden.size === 0) {
+          hiddenSockets.delete(userId);
+        }
+      }
+
       if (sockets) {
         sockets.delete(socket.id);
         if (sockets.size === 0) {
