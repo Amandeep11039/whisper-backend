@@ -1,6 +1,7 @@
 import * as repo from "../repositories/messages.repository.js";
 import { getIO } from "../config/socket.js";
 import { AppError } from "./auth.service.js";
+import { prisma } from "../config/prisma.js";
 
 export const fetchMessages = async (limit: number, cursor?: string) => {
   const messages = await repo.getMessages(limit, cursor);
@@ -108,11 +109,19 @@ export const markSeen = async (userId: string, originSocketId?: string) => {
       throw err;
     }
   }
-  const payload = { seenAt: now.toISOString() };
-  if (originSocketId) {
-    getIO().except(originSocketId).emit("messages:seen", payload);
-  } else {
-    getIO().emit("messages:seen", payload);
+
+  // Find the partner (whose messages we just marked as seen)
+  // and notify ONLY them — not broadcast to everyone.
+  const partner = await prisma.user.findFirst({
+    where: { id: { not: userId } },
+    select: { id: true },
+  });
+
+  if (partner) {
+    const payload = { seenAt: now.toISOString() };
+    // Emit only to the partner's personal room so they see their sent messages got read
+    getIO().to(partner.id).emit("messages:seen", payload);
   }
+
   return now.toISOString();
 };
