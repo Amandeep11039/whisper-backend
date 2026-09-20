@@ -1,17 +1,9 @@
 import { Router } from 'express';
-import { requireAuth } from '../middlewares/auth.middleware.js';
-import { validate } from '../middlewares/validate.middleware.js';
-import * as ctrl from '../controllers/messages.controller.js';
-import { SendMessageSchema, EditMessageSchema, PaginationSchema } from '../validators/message.schema.js';
+import { requireAuth } from '../middlewares/auth.js';
+import { getUnreadMessages } from '../controllers/message.controller.js';
 
 const router = Router();
 
-router.use(requireAuth);
-
-router.get('/', validate(PaginationSchema, 'query'), ctrl.getMessages);
-router.post('/seen', ctrl.markSeen);
-router.post('/', validate(SendMessageSchema), ctrl.sendMessage);
-router.patch('/:id', validate(EditMessageSchema), ctrl.editMessage);
-router.delete('/:id', ctrl.deleteMessage);
+router.get('/unread', requireAuth, getUnreadMessages);
 
 export default router;

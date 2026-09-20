@@ -12,20 +12,21 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'https://whisper-frontend-nine.vercel.app',
-    /^http:\/\/192\.168\.\d+\.\d+:5173$/, // Allow local network IPs
+    /^http:\/\/192\.168\.\d+\.\d+:5173$/,
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
     'Content-Type',
     'Authorization',
-    'x-user-id',
-    'x-socket-id'
   ],
 }));
 
 app.options('*', cors());
+
+// Support JSON as well as text/plain for sendBeacon requests
 app.use(express.json());
+app.use(express.text({ type: ['text/plain', 'text/*'] }));
 app.use(morgan('dev'));
 
 // Basic health check

@@ -1,38 +1,75 @@
 import { Request, Response } from 'express';
-import { asyncHandler } from '../utils/asyncHandler.js';
-import { loginUser, AppError } from '../services/auth.service.js';
+import bcrypt from 'bcrypt';
 import { prisma } from '../config/prisma.js';
+import { signToken, revokeToken } from '../utils/jwt.js';
 
-export const login = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { username, pin } = req.body;
-
+export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    const user = await loginUser(username, pin);
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastSeenAt: null }
-    });
-    res.json(user);
-  } catch (error: any) {
-    if (error instanceof AppError) {
-      res.status(error.statusCode).json({ error: error.message });
+    const { username, pin } = req.body;
+
+    if (!username || !pin) {
+      res.status(400).json({ error: 'Username and PIN are required' });
       return;
     }
-    throw error;
-  }
-});
 
-export const logout = asyncHandler(async (req: Request, res: Response): Promise<void> => {
-  const { userId } = req.body;
-  if (userId) {
-    try {
-      await prisma.user.update({
-        where: { id: userId },
-        data: { lastSeenAt: new Date() }
-      });
-    } catch (err) {
-      console.error('[auth] logout lastSeenAt update failed:', err);
+    const cleanUsername = String(username).trim().toLowerCase();
+    const cleanPin = String(pin).trim();
+
+    const user = await prisma.user.findUnique({
+      where: { username: cleanUsername },
+    });
+
+    if (!user) {
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
     }
+
+    const isMatch = await bcrypt.compare(cleanPin, user.pinHash);
+    if (!isMatch) {
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
+    }
+
+    const token = signToken(user.id, user.username);
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+      },
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed' });
   }
-  res.json({ success: true });
-});
+};
+
+export const logout = async (req: Request, res: Response): Promise<void> => {
+  try {
+    let token: string | undefined;
+
+    // Handle token from JSON body, plain text body (sendBeacon), or Authorization header
+    if (typeof req.body === 'string') {
+      try {
+        const parsed = JSON.parse(req.body);
+        token = parsed.token;
+      } catch {
+        token = req.body;
+      }
+    } else if (req.body && req.body.token) {
+      token = req.body.token;
+    } else if (req.headers.authorization?.startsWith('Bearer ')) {
+      token = req.headers.authorization.split(' ')[1];
+    }
+
+    if (token) {
+      await revokeToken(token);
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    console.error('Logout error:', error);
+    res.status(204).send(); // Always return success for logout even on error
+  }
+};

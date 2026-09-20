@@ -1,40 +1,42 @@
 import { PrismaClient } from '@prisma/client';
-import { hashPin } from '../src/utils/hash.js';
+import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
-async function main(): Promise<void> {
-  const user1 = await prisma.user.upsert({
-    where: { username: 'user1' },
-    update: {},
-    create: {
-      username: 'user1',
-      displayName: 'Your Name',
-      pinHash: await hashPin('000000'),
-      preferences: { create: { theme: 'SYSTEM' } },
+async function main() {
+  console.log('Clearing existing data...');
+  await prisma.message.deleteMany();
+  await prisma.revokedToken.deleteMany();
+  await prisma.user.deleteMany();
+
+  const defaultPin = '123456';
+  const salt = await bcrypt.genSalt(10);
+  const pinHash = await bcrypt.hash(defaultPin, salt);
+
+  console.log('Seeding 2 users: alice and bob with 6-digit PIN: 123456');
+
+  const alice = await prisma.user.create({
+    data: {
+      username: 'alice',
+      pinHash,
     },
   });
 
-  const user2 = await prisma.user.upsert({
-    where: { username: 'user2' },
-    update: {},
-    create: {
-      username: 'user2',
-      displayName: 'Their Name',
-      pinHash: await hashPin('000000'),
-      preferences: { create: { theme: 'SYSTEM' } },
+  const bob = await prisma.user.create({
+    data: {
+      username: 'bob',
+      pinHash,
     },
   });
 
-  await prisma.nickname.upsert({
-    where: { giverId_receiverId: { giverId: user1.id, receiverId: user2.id } },
-    update: {},
-    create: { giverId: user1.id, receiverId: user2.id, nickname: 'My Sunshine' },
-  });
-
-  console.log('Seeded two users. PINS are 000000.');
+  console.log(`Users created: ${alice.username} (${alice.id}), ${bob.username} (${bob.id})`);
 }
 
 main()
-  .catch(console.error)
-  .finally(() => prisma.$disconnect());
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

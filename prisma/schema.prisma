@@ -11,44 +11,19 @@ model User {
   id          String    @id @default(cuid())
   username    String    @unique
   pinHash     String
-  displayName String
-  avatarUrl   String?
-  lastSeenAt  DateTime?
+  lastReadAt  DateTime? // cursor: messages created after this are unread for this user
   createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
 
-  sentMessages      Message[]       @relation("SentMessages")
-  givenNicknames    Nickname[]      @relation("GivenNicknames")
-  receivedNicknames Nickname[]      @relation("ReceivedNickname")
-  preferences       UserPreference?
+  sentMessages Message[] @relation("SentMessages")
 
   @@index([username])
 }
 
-model Nickname {
-  id         String @id @default(cuid())
-  giverId    String
-  receiverId String
-  nickname   String
-
-  giver    User @relation("GivenNicknames", fields: [giverId],    references: [id])
-  receiver User @relation("ReceivedNickname", fields: [receiverId], references: [id])
-
-  @@unique([giverId, receiverId])
-}
-
 model Message {
-  id        String      @id @default(cuid())
+  id        String   @id @default(cuid())
   senderId  String
-  content   String?
-  type      String      // TEXT | IMAGE | VOICE
-  mediaUrl  String?
-  isEdited  Boolean     @default(false)
-  editedAt  DateTime?
-  isDeleted Boolean     @default(false)
-  deletedAt DateTime?
-  seenAt    DateTime?
-  createdAt DateTime    @default(now())
+  content   String   // pure plain text only
+  createdAt DateTime @default(now())
 
   sender User @relation("SentMessages", fields: [senderId], references: [id])
 
@@ -56,11 +31,8 @@ model Message {
   @@index([senderId])
 }
 
-model UserPreference {
-  userId           String  @id
-  theme            String  @default("SYSTEM") // LIGHT | DARK | SYSTEM
-  showOnlineStatus Boolean @default(true)
-  showLastSeen     Boolean @default(true)
-
-  user User @relation(fields: [userId], references: [id])
+model RevokedToken {
+  jti       String   @id       // JWT unique identifier (UUID)
+  revokedAt DateTime @default(now())
+  expiresAt DateTime            // expiry time for cleanup
 }
