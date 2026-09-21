@@ -5,6 +5,9 @@ import { prisma } from './prisma.js';
 
 let io: Server | null = null;
 
+// Per-user server-side safety timers for typing auto-stop (handles network drops / crashes)
+const typingTimers = new Map<string, NodeJS.Timeout>();
+
 export const initSocket = (httpServer: HttpServer): Server => {
   io = new Server(httpServer, {
     cors: {
@@ -43,8 +46,8 @@ export const initSocket = (httpServer: HttpServer): Server => {
   });
 
   io.on('connection', (socket: Socket) => {
-    const userId = socket.data.userId;
-    const username = socket.data.username;
+    const userId = socket.data.userId as string;
+    const username = socket.data.username as string;
     console.log(`User connected to socket: ${username} (${userId})`);
 
     // Both users join the single unified chat room
@@ -52,27 +55,22 @@ export const initSocket = (httpServer: HttpServer): Server => {
 
     socket.on('send_message', async (data: { content: string }) => {
       try {
-        if (!data || typeof data.content !== 'string') {
-          return;
-        }
+        if (!data || typeof data.content !== 'string') return;
 
         const text = data.content.trim();
-        if (!text) {
-          return;
+        if (!text) return;
+
+        // If sender was typing, cancel their server-side typing timer and notify partner
+        if (typingTimers.has(userId)) {
+          clearTimeout(typingTimers.get(userId)!);
+          typingTimers.delete(userId);
+          socket.to('chat').emit('partner_stopped_typing', { userId });
         }
 
         // Save pure text message to database
         const savedMessage = await prisma.message.create({
-          data: {
-            senderId: userId,
-            content: text,
-          },
-          select: {
-            id: true,
-            senderId: true,
-            content: true,
-            createdAt: true,
-          },
+          data: { senderId: userId, content: text },
+          select: { id: true, senderId: true, content: true, createdAt: true },
         });
 
         // Broadcast to both users in the room
@@ -82,8 +80,45 @@ export const initSocket = (httpServer: HttpServer): Server => {
       }
     });
 
+    // ─── Typing indicator events ──────────────────────────────────────────────
+
+    socket.on('typing_start', () => {
+      // Clear any existing safety timeout for this user
+      if (typingTimers.has(userId)) {
+        clearTimeout(typingTimers.get(userId)!);
+      }
+
+      // Notify partner — NOT the sender (socket.to vs io.to)
+      socket.to('chat').emit('partner_typing', { userId });
+
+      // Safety: auto-stop after 5 s in case client never sends typing_stop
+      const timer = setTimeout(() => {
+        socket.to('chat').emit('partner_stopped_typing', { userId });
+        typingTimers.delete(userId);
+      }, 5000);
+
+      typingTimers.set(userId, timer);
+    });
+
+    socket.on('typing_stop', () => {
+      if (typingTimers.has(userId)) {
+        clearTimeout(typingTimers.get(userId)!);
+        typingTimers.delete(userId);
+      }
+      socket.to('chat').emit('partner_stopped_typing', { userId });
+    });
+
+    // ─── Disconnect cleanup ───────────────────────────────────────────────────
+
     socket.on('disconnect', () => {
       console.log(`User disconnected from socket: ${username} (${userId})`);
+
+      // Clear typing timer and inform partner the indicator should stop
+      if (typingTimers.has(userId)) {
+        clearTimeout(typingTimers.get(userId)!);
+        typingTimers.delete(userId);
+      }
+      socket.to('chat').emit('partner_stopped_typing', { userId });
     });
   });
 
@@ -91,8 +126,6 @@ export const initSocket = (httpServer: HttpServer): Server => {
 };
 
 export const getIO = (): Server => {
-  if (!io) {
-    throw new Error('Socket.io has not been initialized');
-  }
+  if (!io) throw new Error('Socket.io has not been initialized');
   return io;
 };
